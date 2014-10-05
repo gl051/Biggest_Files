@@ -33,6 +33,7 @@ fi
 # -------------------------------------
 # Execution
 # -------------------------------------
+echo 'Start' $(date +"%r")
 
 current_dir=$(pwd)
 cd $start_dir
@@ -42,3 +43,5 @@ cd $start_dir
 ls -lSR | grep '^-' | tr -s ' ' | cut -d ' ' -f5,9 | sort -n -r  | head -n $how_many
 
 cd $current_dir
+
+echo  'End' $(date +"%r")
