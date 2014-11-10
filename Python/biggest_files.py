@@ -1,65 +1,109 @@
 #!/usr/bin/python -tt
 import sys
+import os
 import subprocess
 import platform
+import datetime
 
-tmp_name_file = 'tmp_ls_listing.txt'
+temporary_file = 'tmp_listing.txt'
+
+class ResultsContainer:
+    """
+        Result container
+    """
+
+    def __init__(self, max_val=1):
+        self.max_val = max_val
+        self.results = {}
+        self.smallest_file = ""
+
+    def update(self, fullpath_filename, file_size):
+        """
+            Manage the results by adding and removing files depending on the parameters provided.
+
+            fullpath_filename = full path name of the file
+            file_size = file size in bytes
+        """
+
+        count_files_saved = len(self.results)
+
+        # If it's the first file just add it
+        if count_files_saved == 0:
+            self.smallest_file = fullpath_filename
+            self.results.update({fullpath_filename: file_size})
+        else:
+            # There is still space in the results to save the file
+            if count_files_saved < self.max_val:
+                self.results.update({fullpath_filename: file_size})
+                if file_size < self.results.get(self.smallest_file, 0):
+                    self.smallest_file = fullpath_filename
+            else:
+                # We reached the maximum number of files collected
+                # If file is bigger than the smallest then make space for it and
+                # evaluate again the smallest file
+                if file_size > self.results.get(self.smallest_file):
+                    self.results.pop(self.smallest_file)
+                    self.results.update({fullpath_filename: file_size})
+                    self.smallest_file = fullpath_filename
+                    #Update the smallest file key
+                    for key in self.results.keys():
+                        if self.results[key] < self.results.get(self.smallest_file):
+                            self.smallest_file = key
+
+    def show(self):
+        print "### Results ###"
+        for key in self.results.keys():
+            print 'File %s, size %d' % (key, self.results[key])
+        print "### ----- ###"
 
 
-def RunningOnMac(startDir):
-    f_tmp = open(tmp_name_file, 'w')
-    subprocess.call(['ls', '-lRS', startDir], stdout=f_tmp)
-    f_tmp.close()
+def RunningOnMac(starting_directory, max_files):
+    file_object = open(temporary_file, 'w')
+    subprocess.call(['ls', '-lRS', starting_directory], stdout=file_object)
+    file_object.close()
 
-    maxFile = 'n/a'
-    maxSizeFound = -1
-    maxSizeStr = ''
-    maxFilePath = ''
-    weAreLookingForFirstLine = True
-    with open(tmp_name_file, 'r') as f:
-        line = f.readline()
-        # Here you are in inside the starting directoty,
-        # use the while for the recursion only
-        # so you get the first line path and the second line total files
+    current_size = -1
+    current_path = ''
+    results = ResultsContainer(max_files)
+
+    with open(temporary_file, 'r') as f:
         #
-        # Skip the first line (total line)
+        """
+            Here you are in inside the starting directory, use the while only for the recurisve listing
+            where the first line is the path and the second line is total files count.
+
+            Example of output for the current directory:
+            total 168
+            -rw-r--r--  1 Gianluca  staff  81128 Oct  8 18:08 tmp_ls_listing.txt
+
+        """
+        current_path = starting_directory
+        # consume the first line which means nothing (total 123)
         line = f.readline()
-        # Get the second and only interested line here (since ordered by size)
-        # manage here the case of empty dir (to do)
-        line = f.readline()
-        lineElements = line.split()
-        if len(lineElements) > 4:
-                sVal = lineElements[4]
-                if sVal.isdigit():
-                    maxSizeFound = long(sVal)
-                    maxSizeStr = sVal
-                    maxFile = startDir + '/' + lineElements[8]
-        # Let's process the recursive values:
+        # start reading meaningful lines
         line = f.readline()
         while line:
-            if line.startswith('/'):
-                maxFilePath = line.rstrip(':\n')
-                #print '>>Reading directory ' + maxFilePath
-                weAreLookingForFirstLine = True
+            # If it's a subdirectory update the current path
+            if line.startswith('/') or line.startswith('./'):
+                current_path = line.rstrip(':\n')
+                # Consule the extra line (total 123)
+                line = f.readline()
             else:
-                if weAreLookingForFirstLine:
-                    lineElements = line.split()
-                    if len(lineElements) > 4:
-                        weAreLookingForFirstLine = False
-                        sVal = lineElements[4]
-                        if sVal.isdigit():
-                            if (long(sVal) > maxSizeFound):
-                                #print 'Found new max ' + sVal
-                                #print maxFilePath
-                                maxSizeFound = long(sVal)
-                                maxSizeStr = sVal
-                                maxFile = maxFilePath + '/' + ' '.join(lineElements[8:])
+                    # We are over the lines of directory and total number of lines
+                    line_elements = line.split()
+                    # I want to process only files
+                    if len(line_elements) > 4 and line_elements[0].startswith('-'):
+                        size = line_elements[4]
+                        if size.isdigit():
+                            current_size = int(size)
+                            current_file = current_path + '/' + ' '.join(line_elements[8:])
+                            results.update(current_file, current_size)
             line = f.readline()
-    print '## Biggest file: ' + maxFile
-    print '## Size (bytes):  ' + maxSizeStr
+    results.show()
+    os.remove(temporary_file)
 
 
-def RunningOnLinux(startDir):
+def RunningOnLinux(starting_directory):
     print 'Not implemented for this OS'
 
 
@@ -70,16 +114,19 @@ def main():
         print 'find_biggest_files <directory> <how_many>'
         sys.exit()
     else:
-        startDir = sys.argv[1]
-        howMany = sys.argv[2]
+        starting_directory = sys.argv[1]
+        how_many = int(sys.argv[2])
 
     #Detect which operative system you are running Python
     os_name = platform.system()
+    start_time = datetime.datetime.utcnow()
     if os_name.lower() == 'darwin':
-        print 'Running Mac'
-        RunningOnMac(startDir)
+        RunningOnMac(starting_directory, how_many)
     else:
         print 'Not implemented yet for this operative system'
+    stop_time = datetime.datetime.utcnow()
+    print "Execution time {}".format(stop_time-start_time)
+
 
 # boiler plate for linking the main
 if __name__ == '__main__':
